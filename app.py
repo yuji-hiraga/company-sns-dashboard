@@ -560,6 +560,10 @@ def render_buzz_tab():
             if "retweets_count" in buzz.columns else \
             buzz[["id", "source_username", "original_text", "likes_count",
                   "genre", "category", "arrange_idea", "status"]].copy()
+        # 数値型を確実に int に
+        edit_df["likes_count"] = edit_df["likes_count"].fillna(0).astype("int64")
+        if "retweets_count" in edit_df.columns:
+            edit_df["retweets_count"] = edit_df["retweets_count"].fillna(0).astype("int64")
 
         edited = st.data_editor(
             edit_df,
@@ -568,8 +572,8 @@ def render_buzz_tab():
                 "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
                 "source_username": st.column_config.TextColumn("元アカウント"),
                 "original_text": st.column_config.TextColumn("元ツイート", width="large"),
-                "likes_count": st.column_config.NumberColumn("いいね", min_value=0, max_value=10_000_000, step=100, format="localized", width="large"),
-                "retweets_count": st.column_config.NumberColumn("RT", min_value=0, max_value=10_000_000, step=100, format="localized", width="large") if "retweets_count" in edit_df.columns else None,
+                "likes_count": st.column_config.NumberColumn("いいね", min_value=0, max_value=10_000_000, width="medium"),
+                "retweets_count": st.column_config.NumberColumn("RT", min_value=0, max_value=10_000_000, width="medium") if "retweets_count" in edit_df.columns else None,
                 "genre": st.column_config.SelectboxColumn("ジャンル",
                     options=["あるある", "時事", "エロ", "名言", "自虐", "その他"]),
                 "category": st.column_config.SelectboxColumn("カテゴリ",
