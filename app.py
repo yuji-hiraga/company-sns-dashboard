@@ -560,10 +560,10 @@ def render_buzz_tab():
             if "retweets_count" in buzz.columns else \
             buzz[["id", "source_username", "original_text", "likes_count",
                   "genre", "category", "arrange_idea", "status"]].copy()
-        # 数値型を確実に int に
-        edit_df["likes_count"] = edit_df["likes_count"].fillna(0).astype("int64")
+        # 文字列に変換（NumberColumnの入力制限回避のため）
+        edit_df["likes_count"] = edit_df["likes_count"].fillna(0).astype("int64").astype(str)
         if "retweets_count" in edit_df.columns:
-            edit_df["retweets_count"] = edit_df["retweets_count"].fillna(0).astype("int64")
+            edit_df["retweets_count"] = edit_df["retweets_count"].fillna(0).astype("int64").astype(str)
 
         edited = st.data_editor(
             edit_df,
@@ -572,8 +572,8 @@ def render_buzz_tab():
                 "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
                 "source_username": st.column_config.TextColumn("元アカウント"),
                 "original_text": st.column_config.TextColumn("元ツイート", width="large"),
-                "likes_count": st.column_config.NumberColumn("いいね", min_value=0, max_value=10_000_000, width="medium"),
-                "retweets_count": st.column_config.NumberColumn("RT", min_value=0, max_value=10_000_000, width="medium") if "retweets_count" in edit_df.columns else None,
+                "likes_count": st.column_config.TextColumn("いいね", width="medium", help="数値で入力（例: 12000）"),
+                "retweets_count": st.column_config.TextColumn("RT", width="medium", help="数値で入力（例: 5000）") if "retweets_count" in edit_df.columns else None,
                 "genre": st.column_config.SelectboxColumn("ジャンル",
                     options=["あるある", "時事", "エロ", "名言", "自虐", "その他"]),
                 "category": st.column_config.SelectboxColumn("カテゴリ",
@@ -597,6 +597,11 @@ def render_buzz_tab():
                         rid = int(row["id"])
                         orig = original_dict.get(rid, {})
                         if any(row[k] != orig.get(k) for k in row.index if k != "id"):
+                            def to_int(val):
+                                try:
+                                    return int(str(val or 0).replace(",", "").replace(" ", ""))
+                                except (ValueError, TypeError):
+                                    return 0
                             cur.execute("""
                                 UPDATE marketing.buzz_references SET
                                     source_username = %s, original_text = %s,
@@ -607,8 +612,8 @@ def render_buzz_tab():
                                 WHERE id = %s
                             """, (
                                 row.get("source_username"), row.get("original_text"),
-                                int(row.get("likes_count") or 0),
-                                int(row.get("retweets_count") or 0) if "retweets_count" in row else 0,
+                                to_int(row.get("likes_count")),
+                                to_int(row.get("retweets_count")) if "retweets_count" in row else 0,
                                 row.get("genre"), row.get("category"),
                                 row.get("arrange_idea"), row.get("status"),
                                 rid,
