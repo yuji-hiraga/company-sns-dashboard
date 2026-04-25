@@ -15,6 +15,14 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path='.env')
 
+# Streamlit Cloud対応: secrets.tomlがあれば環境変数として使う
+try:
+    for k, v in st.secrets.items():
+        if not os.getenv(k):
+            os.environ[k] = str(v)
+except Exception:
+    pass
+
 # ── 設定永続化 ────────────────────────────────────────────
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), ".dashboard_settings.json")
 
