@@ -15,14 +15,6 @@ from dotenv import load_dotenv
 
 load_dotenv(dotenv_path='.env')
 
-# Streamlit Cloud対応: secrets.tomlがあれば環境変数として使う
-try:
-    for k, v in st.secrets.items():
-        if not os.getenv(k):
-            os.environ[k] = str(v)
-except Exception:
-    pass
-
 # ── 設定永続化 ────────────────────────────────────────────
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), ".dashboard_settings.json")
 
@@ -381,29 +373,63 @@ def render_tab(account: str, account_id: int, goals: dict, prefix: str):
     total_follows = int(summary["follows"].iloc[-1]) if not summary.empty and "follows" in summary.columns else following
     ff_ratio = round(total_followers / total_follows, 2) if total_follows > 0 else 0
 
-    # ── カード1: エンゲージメント系（投稿・いいね・インプレ） ─
-    st.markdown('<div style="background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
-    make_metric_card(
-        metrics=[
-            {"label": "投稿数", "value": f"{total_posts:,}", "delta": calc_delta("posts_count"), "color": "#3498db", "y_col": "posts_count"},
-            {"label": "いいね", "value": f"{total_likes:,}", "delta": calc_delta("likes"), "color": "#e74c3c", "y_col": "likes"},
-            {"label": "インプレ", "value": f"{total_impressions:,}", "delta": calc_delta("impressions"), "color": "#27ae60", "y_col": "impressions"},
-        ],
-        df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_engagement"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── 上段: 投稿数・いいね・インプレ（個別グラフ3つ）─
+    eng_col1, eng_col2, eng_col3 = st.columns(3)
+    with eng_col1:
+        st.markdown('<div style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
+        make_metric_card(
+            metrics=[{"label": "投稿数", "value": f"{total_posts:,}", "delta": calc_delta("posts_count"), "color": "#3498db", "y_col": "posts_count"}],
+            df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_posts"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    with eng_col2:
+        st.markdown('<div style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
+        make_metric_card(
+            metrics=[{"label": "いいね", "value": f"{total_likes:,}", "delta": calc_delta("likes"), "color": "#e74c3c", "y_col": "likes"}],
+            df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_likes"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    with eng_col3:
+        st.markdown('<div style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
+        make_metric_card(
+            metrics=[{"label": "インプレ", "value": f"{total_impressions:,}", "delta": calc_delta("impressions"), "color": "#27ae60", "y_col": "impressions"}],
+            df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_imp"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── カード2: フォロワー系（フォロワー・フォロー・FF比） ─
-    st.markdown('<div style="background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
-    make_metric_card(
-        metrics=[
-            {"label": "フォロワー", "value": f"{total_followers:,}", "delta": calc_delta("followers"), "color": "#1da1f2", "y_col": "followers"},
-            {"label": "フォロー", "value": f"{total_follows:,}", "delta": calc_delta("follows") if "follows" in summary.columns else 0, "color": "#888888", "y_col": "follows"},
-            {"label": "FF比", "value": f"{ff_ratio}", "delta": 0, "color": "#9b59b6", "y_col": None},
-        ],
-        df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_followers"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── 下段: フォロワー・フォロー・FF比（個別グラフ3つ）─
+    fol_col1, fol_col2, fol_col3 = st.columns(3)
+    with fol_col1:
+        st.markdown('<div style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
+        make_metric_card(
+            metrics=[{"label": "フォロワー", "value": f"{total_followers:,}", "delta": calc_delta("followers"), "color": "#1da1f2", "y_col": "followers"}],
+            df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_followers"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    with fol_col2:
+        st.markdown('<div style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
+        delta_follows = calc_delta("follows") if "follows" in summary.columns else 0
+        make_metric_card(
+            metrics=[{"label": "フォロー", "value": f"{total_follows:,}", "delta": delta_follows, "color": "#888888", "y_col": "follows"}],
+            df=summary, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_follows"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+    with fol_col3:
+        st.markdown('<div style="background:white;border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
+        # FF比は折れ線がないのでカード単独表示
+        if not summary.empty and "follows" in summary.columns:
+            ff_series = (summary["followers"] / summary["follows"].replace(0, 1)).round(2)
+            ff_df = pd.DataFrame({"summary_date": summary["summary_date"], "ff_ratio": ff_series})
+            make_metric_card(
+                metrics=[{"label": "FF比", "value": f"{ff_ratio}", "delta": 0, "color": "#9b59b6", "y_col": "ff_ratio"}],
+                df=ff_df, x_col="summary_date", prefix=prefix, key=f"{prefix}_card_ff"
+            )
+        else:
+            make_metric_card(
+                metrics=[{"label": "FF比", "value": f"{ff_ratio}", "delta": 0, "color": "#9b59b6", "y_col": None}],
+                df=pd.DataFrame(), x_col="summary_date", prefix=prefix, key=f"{prefix}_card_ff"
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
 
     # ── フォロワー増減グラフ ─────────────────────────────
     st.markdown('<div style="background:white;border-radius:12px;padding:20px;box-shadow:0 1px 4px rgba(0,0,0,0.06);margin-bottom:12px;">', unsafe_allow_html=True)
@@ -534,8 +560,8 @@ def render_buzz_tab():
                 "id": st.column_config.NumberColumn("ID", disabled=True, width="small"),
                 "source_username": st.column_config.TextColumn("元アカウント"),
                 "original_text": st.column_config.TextColumn("元ツイート", width="large"),
-                "likes_count": st.column_config.NumberColumn("いいね", min_value=0),
-                "retweets_count": st.column_config.NumberColumn("RT", min_value=0) if "retweets_count" in edit_df.columns else None,
+                "likes_count": st.column_config.NumberColumn("いいね", min_value=0, max_value=10_000_000, step=1, format="%d", width="medium"),
+                "retweets_count": st.column_config.NumberColumn("RT", min_value=0, max_value=10_000_000, step=1, format="%d", width="medium") if "retweets_count" in edit_df.columns else None,
                 "genre": st.column_config.SelectboxColumn("ジャンル",
                     options=["あるある", "時事", "エロ", "名言", "自虐", "その他"]),
                 "category": st.column_config.SelectboxColumn("カテゴリ",
