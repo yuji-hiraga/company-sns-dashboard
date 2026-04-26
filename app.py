@@ -1058,8 +1058,15 @@ def render_competitor_tab():
 # ════════════════════════════════════════════════════════════
 # メイン
 # ════════════════════════════════════════════════════════════
-st.title("📊 SNS 運用ダッシュボード")
-st.caption(f"最終更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+title_col, refresh_col = st.columns([5, 1])
+with title_col:
+    st.title("📊 SNS 運用ダッシュボード")
+    st.caption(f"最終更新: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+with refresh_col:
+    st.write("")
+    if st.button("🔄 最新データに更新", use_container_width=True, type="primary"):
+        st.cache_data.clear()
+        st.rerun()
 
 tabs = st.tabs([
     "🌟 Lumina",
