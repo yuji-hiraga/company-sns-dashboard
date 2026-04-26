@@ -1065,8 +1065,34 @@ with title_col:
 with refresh_col:
     st.write("")
     if st.button("🔄 最新データに更新", use_container_width=True, type="primary"):
-        st.cache_data.clear()
-        st.rerun()
+        # X APIから最新データを取得してDBに保存
+        with st.spinner("X APIから最新データを取得中..."):
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                today = date.today()
+                for account_name, account_id in [("lumina", 1), ("myaku", 2)]:
+                    info = get_account_info(account_name)
+                    if info:
+                        cur.execute("""
+                            INSERT INTO marketing.daily_summary
+                                (account_id, summary_date, posts_count, impressions, likes, followers, follows)
+                            VALUES (%s, %s, %s, 0, 0, %s, %s)
+                            ON CONFLICT (account_id, summary_date) DO UPDATE SET
+                                posts_count = EXCLUDED.posts_count,
+                                followers = EXCLUDED.followers,
+                                follows = EXCLUDED.follows
+                        """, (
+                            account_id, today,
+                            info["tweet_count"], info["followers_count"], info["following_count"]
+                        ))
+                conn.commit()
+                cur.close()
+                st.cache_data.clear()
+                st.success("✅ 更新完了！")
+                st.rerun()
+            except Exception as e:
+                st.error(f"更新エラー: {e}")
 
 tabs = st.tabs([
     "🌟 Lumina",
