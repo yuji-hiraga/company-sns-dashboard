@@ -811,6 +811,137 @@ def render_buzz_tab():
                 {tmpl['label']}
             </a>""", unsafe_allow_html=True)
 
+# ── トレンドタブ ──────────────────────────────────────────
+@st.cache_data(ttl=60)
+def get_trend_memos(status_filter: str = "all"):
+    try:
+        conn = get_db()
+        where = "" if status_filter == "all" else f"WHERE status = '{status_filter}'"
+        return pd.read_sql(f"""
+            SELECT id, topic, source, quote_idea, target_account, status, note, created_at, posted_at
+            FROM marketing.trend_memos
+            {where}
+            ORDER BY created_at DESC LIMIT 100
+        """, conn)
+    except Exception as e:
+        return pd.DataFrame()
+
+def render_trend_tab():
+    st.markdown("### 📈 トレンド便乗")
+    st.caption("Xでバズってる話題に引用ツイート・関連投稿で便乗してバズらせる戦術用")
+
+    # ── トレンドリンク集 ──────────────────────────────────
+    st.markdown("#### 🔗 トレンドリサーチ（外部サイト）")
+    link_col1, link_col2, link_col3, link_col4 = st.columns(4)
+    links = [
+        ("📡 Yahoo!リアルタイム検索", "https://search.yahoo.co.jp/realtime", "#FF0033"),
+        ("🐦 X トレンド", "https://x.com/explore/tabs/trending", "#1da1f2"),
+        ("📊 Google Trends Japan", "https://trends.google.co.jp/trending?geo=JP", "#4285F4"),
+        ("🔥 X 話題のツイート（日本）", "https://x.com/search?q=min_faves%3A10000%20lang%3Aja&src=typed_query&f=live", "#000000"),
+    ]
+    for col, (label, url, color) in zip([link_col1, link_col2, link_col3, link_col4], links):
+        with col:
+            st.markdown(f"""<a href="{url}" target="_blank" style="
+                display:block; padding:12px; background:{color}; color:white;
+                border-radius:8px; text-decoration:none; text-align:center;
+                font-size:13px; font-weight:600;">{label}</a>""", unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── 新規メモ登録 ──────────────────────────────────────
+    with st.expander("➕ 気になったトレンド・引用ツイート案を登録"):
+        with st.form("trend_memo_form", clear_on_submit=True):
+            new_topic = st.text_input("トピック / トレンドキーワード *", placeholder="例: 大阪万博 開催")
+            new_source = st.selectbox("情報源", ["X トレンド", "Yahoo!リアルタイム", "Google Trends", "自分で発見", "その他"])
+            new_quote = st.text_area("引用ツイート / 投稿アイデア", placeholder="どんなツイートを投げるか", height=80)
+            tcol1, tcol2 = st.columns(2)
+            with tcol1:
+                new_target = st.selectbox("どのアカウントで投稿？", ["myaku（ミャクやん）", "lumina", "両方", "未定"])
+            with tcol2:
+                new_note = st.text_input("メモ", placeholder="補足あれば")
+            if st.form_submit_button("💾 登録", type="primary"):
+                if new_topic:
+                    try:
+                        conn = get_db()
+                        cur = conn.cursor()
+                        cur.execute("""
+                            INSERT INTO marketing.trend_memos (topic, source, quote_idea, target_account, note)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (new_topic, new_source, new_quote or None, new_target, new_note or None))
+                        conn.commit()
+                        cur.close()
+                        st.success(f"✅ 「{new_topic}」を登録しました")
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラー: {e}")
+                else:
+                    st.warning("トピックは必須です")
+
+    st.divider()
+
+    # ── ステータスフィルタ + 一覧 ─────────────────────────
+    fcol1, fcol2 = st.columns([1, 5])
+    with fcol1:
+        status_filter = st.selectbox("ステータス", ["all", "open", "posted", "skipped"], key="trend_status_filter")
+
+    memos = get_trend_memos(status_filter)
+    if memos.empty:
+        st.info("まだメモがありません。上の「➕」から登録してみましょう")
+        return
+
+    st.markdown(f"#### 📝 トレンドメモ一覧（{len(memos)}件）")
+    for _, row in memos.iterrows():
+        status_emoji = {"open": "🟡", "posted": "✅", "skipped": "⏭️"}.get(row["status"], "❓")
+        with st.expander(f"{status_emoji} {row['topic']} — {row['target_account']} / {row['created_at'].strftime('%m-%d %H:%M')}"):
+            if row["quote_idea"]:
+                st.markdown(f"**💡 投稿案**\n\n{row['quote_idea']}")
+            if row["note"]:
+                st.caption(f"📝 メモ: {row['note']}")
+            st.caption(f"情報源: {row['source']}")
+
+            # X検索URLを生成（ワンクリックで該当トピックをXで調査）
+            search_url = f"https://x.com/search?q={row['topic']}&src=typed_query&f=live"
+            st.markdown(f"[🔍 「{row['topic']}」をXで検索]({search_url})")
+
+            ac1, ac2, ac3 = st.columns(3)
+            with ac1:
+                if row["status"] == "open" and st.button("✅ 投稿済みにする", key=f"trend_done_{row['id']}"):
+                    try:
+                        conn = get_db()
+                        cur = conn.cursor()
+                        cur.execute("UPDATE marketing.trend_memos SET status='posted', posted_at=NOW() WHERE id=%s", (row["id"],))
+                        conn.commit()
+                        cur.close()
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラー: {e}")
+            with ac2:
+                if row["status"] == "open" and st.button("⏭️ スキップ", key=f"trend_skip_{row['id']}"):
+                    try:
+                        conn = get_db()
+                        cur = conn.cursor()
+                        cur.execute("UPDATE marketing.trend_memos SET status='skipped' WHERE id=%s", (row["id"],))
+                        conn.commit()
+                        cur.close()
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラー: {e}")
+            with ac3:
+                if st.button("🗑️ 削除", key=f"trend_del_{row['id']}"):
+                    try:
+                        conn = get_db()
+                        cur = conn.cursor()
+                        cur.execute("DELETE FROM marketing.trend_memos WHERE id=%s", (row["id"],))
+                        conn.commit()
+                        cur.close()
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"エラー: {e}")
+
 # ── ハッシュタグ分析タブ ──────────────────────────────────
 def render_hashtag_tab():
     st.markdown("### #️⃣ ハッシュタグ分析")
@@ -1104,6 +1235,7 @@ with refresh_col:
 tabs = st.tabs([
     "🌟 Lumina",
     "🫧 ミャクやん",
+    "📈 トレンド",
     "🔥 バズストック",
     "📅 定期投稿",
 ])
@@ -1123,9 +1255,12 @@ with tabs[1]:
     }, "myaku")
 
 with tabs[2]:
-    render_buzz_tab()
+    render_trend_tab()
 
 with tabs[3]:
+    render_buzz_tab()
+
+with tabs[4]:
     render_recurring_tab()
 
 with tabs[5]:
