@@ -696,12 +696,21 @@ def render_buzz_tab():
     engagement_scale = [0, 100, 500, 1000, 3000, 5000, 10000, 30000, 50000, 100000, 200000, 300000]
     with col2:
         default_likes = _SAVED.get("buzz_min_likes", 1000)
+        default_max_likes = _SAVED.get("buzz_max_likes", 0)  # 0 = 上限なし
         default_rts = _SAVED.get("buzz_min_rts", 0)
         if default_likes not in engagement_scale: default_likes = 1000
+        max_likes_scale = [0] + engagement_scale[1:]  # 0 = 上限なし
+        if default_max_likes not in max_likes_scale: default_max_likes = 0
         if default_rts not in engagement_scale: default_rts = 0
         min_likes = st.select_slider("最低いいね数", options=engagement_scale, value=default_likes, key="buzz_min_likes")
+        max_likes = st.select_slider(
+            "最大いいね数（中堅バズだけ狙う用 / 0=上限なし）",
+            options=max_likes_scale, value=default_max_likes, key="buzz_max_likes",
+            help="有名人の100万いいね級ツイートを除外したい時に設定。例: 50000にすると5万いいねを超えるツイートが結果から除外される"
+        )
         min_rts = st.select_slider("最低RT数", options=engagement_scale, value=default_rts, key="buzz_min_rts")
         save_setting("buzz_min_likes", min_likes)
+        save_setting("buzz_max_likes", max_likes)
         save_setting("buzz_min_rts", min_rts)
         lang_col, sort_col = st.columns(2)
         lang_options = ["日本語のみ", "全言語", "英語のみ"]
@@ -732,6 +741,16 @@ def render_buzz_tab():
             save_setting("buzz_media", media_filter)
         min_replies = st.select_slider("最低リプライ数", options=[0, 10, 50, 100, 500, 1000], value=0, key="buzz_min_replies")
 
+        adv_chk_col1, adv_chk_col2 = st.columns(2)
+        with adv_chk_col1:
+            default_no_verified = _SAVED.get("buzz_no_verified", False)
+            exclude_verified = st.checkbox(
+                "🚫 認証バッジ（青/金）を除外",
+                value=default_no_verified, key="buzz_no_verified",
+                help="有名人・大物アカウントの多くは認証バッジ持ち。除外すると中小アカの投稿が出やすくなる（ただし青バッジを買った一般人もいる点に注意）"
+            )
+            save_setting("buzz_no_verified", exclude_verified)
+
     import urllib.parse
 
     if st.button("🔍 Xで検索", type="primary", use_container_width=True, key="buzz_search_btn"):
@@ -740,10 +759,14 @@ def render_buzz_tab():
             query_parts.append(keyword)
         if min_likes > 0:
             query_parts.append(f"min_faves:{min_likes}")
+        if max_likes > 0:
+            query_parts.append(f"-min_faves:{max_likes}")
         if min_rts > 0:
             query_parts.append(f"min_retweets:{min_rts}")
         if min_replies > 0:
             query_parts.append(f"min_replies:{min_replies}")
+        if exclude_verified:
+            query_parts.append("-filter:verified")
         lang_map = {"日本語のみ": "ja", "英語のみ": "en", "全言語": None}
         lang_code = lang_map.get(lang_option)
         if lang_code:
