@@ -1098,13 +1098,14 @@ with refresh_col:
             except Exception as e:
                 st.error(f"更新エラー: {e}")
 
+# NOTE: ハッシュタグ・競合分析タブは X API Basic 契約までは事実上使えないため非表示中（2026-04-27）
+# 復活タイミング: X API Basic 契約後（自動データ収集が可能になった時点）
+# 関連: render_hashtag_tab() / render_competitor_tab() 関数とDBテーブルは残してある
 tabs = st.tabs([
     "🌟 Lumina",
     "🫧 ミャクやん",
     "🔥 バズストック",
     "📅 定期投稿",
-    "#️⃣ ハッシュタグ",
-    "🏆 競合分析",
 ])
 
 with tabs[0]:
@@ -1126,9 +1127,6 @@ with tabs[2]:
 
 with tabs[3]:
     render_recurring_tab()
-
-with tabs[4]:
-    render_hashtag_tab()
 
 with tabs[5]:
     render_competitor_tab()
