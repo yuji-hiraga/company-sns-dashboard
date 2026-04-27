@@ -1262,6 +1262,3 @@ with tabs[3]:
 
 with tabs[4]:
     render_recurring_tab()
-
-with tabs[5]:
-    render_competitor_tab()
