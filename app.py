@@ -375,8 +375,8 @@ def render_tab(account: str, account_id: int, goals: dict, prefix: str):
             return 0
         return int(summary[col].iloc[-1] - summary[col].iloc[-2])
 
-    # 累計
-    total_posts = int(summary["posts_count"].sum()) if not summary.empty else 0
+    # posts_count はX APIの累計tweet_count（日次スナップショット）。最新行を採用
+    total_posts = int(summary["posts_count"].iloc[-1]) if not summary.empty else tweet_count
     total_followers = int(summary["followers"].iloc[-1]) if not summary.empty else followers
     total_follows = int(summary["follows"].iloc[-1]) if not summary.empty and "follows" in summary.columns else following
     ff_ratio = round(total_followers / total_follows, 2) if total_follows > 0 else 0
