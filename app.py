@@ -696,21 +696,12 @@ def render_buzz_tab():
     engagement_scale = [0, 100, 500, 1000, 3000, 5000, 10000, 30000, 50000, 100000, 200000, 300000]
     with col2:
         default_likes = _SAVED.get("buzz_min_likes", 1000)
-        default_max_likes = _SAVED.get("buzz_max_likes", 0)  # 0 = 上限なし
         default_rts = _SAVED.get("buzz_min_rts", 0)
         if default_likes not in engagement_scale: default_likes = 1000
-        max_likes_scale = [0] + engagement_scale[1:]  # 0 = 上限なし
-        if default_max_likes not in max_likes_scale: default_max_likes = 0
         if default_rts not in engagement_scale: default_rts = 0
         min_likes = st.select_slider("最低いいね数", options=engagement_scale, value=default_likes, key="buzz_min_likes")
-        max_likes = st.select_slider(
-            "最大いいね数（中堅バズだけ狙う用 / 0=上限なし）",
-            options=max_likes_scale, value=default_max_likes, key="buzz_max_likes",
-            help="有名人の100万いいね級ツイートを除外したい時に設定。例: 50000にすると5万いいねを超えるツイートが結果から除外される"
-        )
         min_rts = st.select_slider("最低RT数", options=engagement_scale, value=default_rts, key="buzz_min_rts")
         save_setting("buzz_min_likes", min_likes)
-        save_setting("buzz_max_likes", max_likes)
         save_setting("buzz_min_rts", min_rts)
         lang_col, sort_col = st.columns(2)
         lang_options = ["日本語のみ", "全言語", "英語のみ"]
@@ -741,16 +732,6 @@ def render_buzz_tab():
             save_setting("buzz_media", media_filter)
         min_replies = st.select_slider("最低リプライ数", options=[0, 10, 50, 100, 500, 1000], value=0, key="buzz_min_replies")
 
-        adv_chk_col1, adv_chk_col2 = st.columns(2)
-        with adv_chk_col1:
-            default_no_verified = _SAVED.get("buzz_no_verified", False)
-            exclude_verified = st.checkbox(
-                "🚫 認証バッジ（青/金）を除外",
-                value=default_no_verified, key="buzz_no_verified",
-                help="有名人・大物アカウントの多くは認証バッジ持ち。除外すると中小アカの投稿が出やすくなる（ただし青バッジを買った一般人もいる点に注意）"
-            )
-            save_setting("buzz_no_verified", exclude_verified)
-
     import urllib.parse
 
     if st.button("🔍 Xで検索", type="primary", use_container_width=True, key="buzz_search_btn"):
@@ -759,14 +740,10 @@ def render_buzz_tab():
             query_parts.append(keyword)
         if min_likes > 0:
             query_parts.append(f"min_faves:{min_likes}")
-        if max_likes > 0:
-            query_parts.append(f"-min_faves:{max_likes}")
         if min_rts > 0:
             query_parts.append(f"min_retweets:{min_rts}")
         if min_replies > 0:
             query_parts.append(f"min_replies:{min_replies}")
-        if exclude_verified:
-            query_parts.append("-filter:verified")
         lang_map = {"日本語のみ": "ja", "英語のみ": "en", "全言語": None}
         lang_code = lang_map.get(lang_option)
         if lang_code:
@@ -833,137 +810,6 @@ def render_buzz_tab():
                 font-size:13px; font-weight:500;">
                 {tmpl['label']}
             </a>""", unsafe_allow_html=True)
-
-# ── トレンドタブ ──────────────────────────────────────────
-@st.cache_data(ttl=60)
-def get_trend_memos(status_filter: str = "all"):
-    try:
-        conn = get_db()
-        where = "" if status_filter == "all" else f"WHERE status = '{status_filter}'"
-        return pd.read_sql(f"""
-            SELECT id, topic, source, quote_idea, target_account, status, note, created_at, posted_at
-            FROM marketing.trend_memos
-            {where}
-            ORDER BY created_at DESC LIMIT 100
-        """, conn)
-    except Exception as e:
-        return pd.DataFrame()
-
-def render_trend_tab():
-    st.markdown("### 📈 トレンド便乗")
-    st.caption("Xでバズってる話題に引用ツイート・関連投稿で便乗してバズらせる戦術用")
-
-    # ── トレンドリンク集 ──────────────────────────────────
-    st.markdown("#### 🔗 トレンドリサーチ（外部サイト）")
-    link_col1, link_col2, link_col3, link_col4 = st.columns(4)
-    links = [
-        ("📡 Yahoo!リアルタイム検索", "https://search.yahoo.co.jp/realtime", "#FF0033"),
-        ("🐦 X トレンド", "https://x.com/explore/tabs/trending", "#1da1f2"),
-        ("📊 Google Trends Japan", "https://trends.google.co.jp/trending?geo=JP", "#4285F4"),
-        ("🔥 X 話題のツイート（日本）", "https://x.com/search?q=min_faves%3A10000%20lang%3Aja&src=typed_query&f=live", "#000000"),
-    ]
-    for col, (label, url, color) in zip([link_col1, link_col2, link_col3, link_col4], links):
-        with col:
-            st.markdown(f"""<a href="{url}" target="_blank" style="
-                display:block; padding:12px; background:{color}; color:white;
-                border-radius:8px; text-decoration:none; text-align:center;
-                font-size:13px; font-weight:600;">{label}</a>""", unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── 新規メモ登録 ──────────────────────────────────────
-    with st.expander("➕ 気になったトレンド・引用ツイート案を登録"):
-        with st.form("trend_memo_form", clear_on_submit=True):
-            new_topic = st.text_input("トピック / トレンドキーワード *", placeholder="例: 大阪万博 開催")
-            new_source = st.selectbox("情報源", ["X トレンド", "Yahoo!リアルタイム", "Google Trends", "自分で発見", "その他"])
-            new_quote = st.text_area("引用ツイート / 投稿アイデア", placeholder="どんなツイートを投げるか", height=80)
-            tcol1, tcol2 = st.columns(2)
-            with tcol1:
-                new_target = st.selectbox("どのアカウントで投稿？", ["myaku（ミャクやん）", "lumina", "両方", "未定"])
-            with tcol2:
-                new_note = st.text_input("メモ", placeholder="補足あれば")
-            if st.form_submit_button("💾 登録", type="primary"):
-                if new_topic:
-                    try:
-                        conn = get_db()
-                        cur = conn.cursor()
-                        cur.execute("""
-                            INSERT INTO marketing.trend_memos (topic, source, quote_idea, target_account, note)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (new_topic, new_source, new_quote or None, new_target, new_note or None))
-                        conn.commit()
-                        cur.close()
-                        st.success(f"✅ 「{new_topic}」を登録しました")
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"エラー: {e}")
-                else:
-                    st.warning("トピックは必須です")
-
-    st.divider()
-
-    # ── ステータスフィルタ + 一覧 ─────────────────────────
-    fcol1, fcol2 = st.columns([1, 5])
-    with fcol1:
-        status_filter = st.selectbox("ステータス", ["all", "open", "posted", "skipped"], key="trend_status_filter")
-
-    memos = get_trend_memos(status_filter)
-    if memos.empty:
-        st.info("まだメモがありません。上の「➕」から登録してみましょう")
-        return
-
-    st.markdown(f"#### 📝 トレンドメモ一覧（{len(memos)}件）")
-    for _, row in memos.iterrows():
-        status_emoji = {"open": "🟡", "posted": "✅", "skipped": "⏭️"}.get(row["status"], "❓")
-        with st.expander(f"{status_emoji} {row['topic']} — {row['target_account']} / {row['created_at'].strftime('%m-%d %H:%M')}"):
-            if row["quote_idea"]:
-                st.markdown(f"**💡 投稿案**\n\n{row['quote_idea']}")
-            if row["note"]:
-                st.caption(f"📝 メモ: {row['note']}")
-            st.caption(f"情報源: {row['source']}")
-
-            # X検索URLを生成（ワンクリックで該当トピックをXで調査）
-            search_url = f"https://x.com/search?q={row['topic']}&src=typed_query&f=live"
-            st.markdown(f"[🔍 「{row['topic']}」をXで検索]({search_url})")
-
-            ac1, ac2, ac3 = st.columns(3)
-            with ac1:
-                if row["status"] == "open" and st.button("✅ 投稿済みにする", key=f"trend_done_{row['id']}"):
-                    try:
-                        conn = get_db()
-                        cur = conn.cursor()
-                        cur.execute("UPDATE marketing.trend_memos SET status='posted', posted_at=NOW() WHERE id=%s", (row["id"],))
-                        conn.commit()
-                        cur.close()
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"エラー: {e}")
-            with ac2:
-                if row["status"] == "open" and st.button("⏭️ スキップ", key=f"trend_skip_{row['id']}"):
-                    try:
-                        conn = get_db()
-                        cur = conn.cursor()
-                        cur.execute("UPDATE marketing.trend_memos SET status='skipped' WHERE id=%s", (row["id"],))
-                        conn.commit()
-                        cur.close()
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"エラー: {e}")
-            with ac3:
-                if st.button("🗑️ 削除", key=f"trend_del_{row['id']}"):
-                    try:
-                        conn = get_db()
-                        cur = conn.cursor()
-                        cur.execute("DELETE FROM marketing.trend_memos WHERE id=%s", (row["id"],))
-                        conn.commit()
-                        cur.close()
-                        st.cache_data.clear()
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"エラー: {e}")
 
 # ── ハッシュタグ分析タブ ──────────────────────────────────
 def render_hashtag_tab():
@@ -1134,6 +980,176 @@ def render_recurring_tab():
                     st.error(f"登録エラー: {e}")
 
 # ── 競合分析タブ ──────────────────────────────────────────
+def render_marine_studio_tab():
+    """🌊 Marine Studio (P5 Web制作事業) ダッシュボードタブ"""
+    st.markdown("### 🌊 Marine Studio — P5 Web制作事業")
+    st.caption("Phase 1（実行フェーズ）| 月収目標 ¥309,000 | 月稼働上限 30h")
+
+    try:
+        conn = get_db()
+
+        # 当月の集計
+        from datetime import datetime as _dt
+        current_month = _dt.now().strftime("%Y-%m")
+
+        summary_df = pd.read_sql(f"""
+            SELECT * FROM creative.v_monthly_summary WHERE month = '{current_month}'
+        """, conn)
+
+        maint_df = pd.read_sql("SELECT * FROM creative.v_active_maintenance", conn)
+        pipeline_df = pd.read_sql("SELECT * FROM creative.v_pipeline", conn)
+        review_df = pd.read_sql("SELECT * FROM creative.v_review_summary", conn)
+
+        # ═══════════════════ KPI 5指標 ═══════════════════
+        st.markdown("#### 📊 当月のコアKPI")
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        # 当月データ取得
+        if not summary_df.empty:
+            row = summary_df.iloc[0]
+            inquiries = int(row["inquiries"])
+            receipts = int(row["receipts"])
+            flow_revenue = int(row["flow_revenue"])
+            work_hours = float(row["work_hours"])
+        else:
+            inquiries = receipts = flow_revenue = 0
+            work_hours = 0.0
+
+        # ストック収益
+        stock_revenue = int(maint_df["monthly_total"].sum()) if not maint_df.empty else 0
+        total_revenue = flow_revenue + stock_revenue
+
+        # レビュー平均
+        avg_rating = float(review_df["avg_rating"].mean()) if not review_df.empty else 0.0
+
+        with col1:
+            st.metric("📥 月間問い合わせ", f"{inquiries}件")
+        with col2:
+            st.metric("📝 月間受注", f"{receipts}件")
+        with col3:
+            st.metric("💰 月間売上", f"¥{total_revenue:,}",
+                      f"フロー¥{flow_revenue:,} / ストック¥{stock_revenue:,}")
+        with col4:
+            hours_color = "🟢" if work_hours < 25 else ("🟡" if work_hours < 30 else "🔴")
+            st.metric(f"{hours_color} 月稼働時間", f"{work_hours:.1f}h / 30h")
+        with col5:
+            st.metric("⭐ レビュー平均", f"{avg_rating:.2f}" if avg_rating > 0 else "—")
+
+        # 稼働時間プログレスバー
+        progress = min(work_hours / 30.0, 1.0)
+        st.progress(progress)
+        if work_hours > 25:
+            st.warning(f"⚠️ 稼働時間が25h超え。新規受注ストップ準備を。")
+        if work_hours > 30:
+            st.error(f"🚨 30h上限到達！即座に新規受注ストップ。")
+
+        st.divider()
+
+        # ═══════════════════ パイプライン ═══════════════════
+        st.markdown("#### 🚦 案件パイプライン")
+        if not pipeline_df.empty:
+            cols = st.columns(len(pipeline_df))
+            status_map = {
+                "proposed": ("📨 提案中", "#9b59b6"),
+                "contracted": ("📝 契約済", "#3498db"),
+                "in_progress": ("🛠 制作中", "#f39c12"),
+            }
+            for i, (_, prow) in enumerate(pipeline_df.iterrows()):
+                label, color = status_map.get(prow["status"], (prow["status"], "#888"))
+                with cols[i]:
+                    st.metric(label, f"{int(prow['project_count'])}件",
+                              f"¥{int(prow['total_amount'] or 0):,}")
+        else:
+            st.info("案件登録待ち。proposed/contracted/in_progress ステータスの案件がここに表示されます。")
+
+        st.divider()
+
+        # ═══════════════════ 月次推移グラフ ═══════════════════
+        st.markdown("#### 📈 月次推移")
+        history_df = pd.read_sql("""
+            SELECT * FROM creative.v_monthly_summary ORDER BY month ASC LIMIT 12
+        """, conn)
+
+        if not history_df.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=history_df["month"], y=history_df["flow_revenue"],
+                name="月間売上", marker_color="#0077B6",
+            ))
+            fig.add_trace(go.Scatter(
+                x=history_df["month"], y=history_df["work_hours"] * 10000,
+                name="稼働時間×10k(参考)", mode="lines+markers",
+                line=dict(color="#FF6B35", width=2), yaxis="y2",
+            ))
+            fig.update_layout(
+                height=300, margin=dict(l=10, r=10, t=20, b=20),
+                paper_bgcolor="white", plot_bgcolor="white",
+                yaxis=dict(title="売上(¥)"),
+                yaxis2=dict(title="稼働時間(h)", overlaying="y", side="right"),
+                legend=dict(orientation="h", y=1.1),
+            )
+            st.plotly_chart(fig, use_container_width=True, key="marine_monthly")
+        else:
+            st.info("データ蓄積中。受注・納品が登録されると推移が見えます。")
+
+        st.divider()
+
+        # ═══════════════════ 月額保守状況 ═══════════════════
+        st.markdown("#### 💎 月額保守ストック")
+        if not maint_df.empty:
+            mcol1, mcol2 = st.columns([2, 1])
+            with mcol1:
+                fig_m = go.Figure(go.Bar(
+                    x=maint_df["plan"], y=maint_df["monthly_total"],
+                    marker_color=["#90E0EF", "#00B4D8", "#0077B6"][:len(maint_df)],
+                    text=maint_df.apply(lambda r: f"{int(r['contract_count'])}社 / ¥{int(r['monthly_total']):,}", axis=1),
+                    textposition="outside",
+                ))
+                fig_m.update_layout(
+                    height=250, margin=dict(l=10, r=10, t=10, b=10),
+                    paper_bgcolor="white", plot_bgcolor="white",
+                    title="プラン別 月額保守"
+                )
+                st.plotly_chart(fig_m, use_container_width=True, key="marine_maint")
+            with mcol2:
+                total_count = int(maint_df["contract_count"].sum())
+                total_amount = int(maint_df["monthly_total"].sum())
+                st.metric("📦 総契約数", f"{total_count}社")
+                st.metric("💰 月次ストック合計", f"¥{total_amount:,}")
+                st.caption("目標: 9社 / ¥69,000")
+        else:
+            st.info("月額保守契約まだなし。納品後アップセルで獲得していきましょう🌊")
+
+        st.divider()
+
+        # ═══════════════════ 直近案件 ═══════════════════
+        st.markdown("#### 📋 直近の案件")
+        recent_df = pd.read_sql("""
+            SELECT
+                p.id, p.project_name, c.name AS client,
+                p.package, p.status, p.amount, p.start_date, p.delivered_at
+            FROM creative.projects p
+            LEFT JOIN creative.clients c ON c.id = p.client_id
+            ORDER BY p.created_at DESC LIMIT 20
+        """, conn)
+
+        if not recent_df.empty:
+            st.dataframe(
+                recent_df.rename(columns={
+                    "id": "ID", "project_name": "案件名", "client": "クライアント",
+                    "package": "パッケージ", "status": "状態", "amount": "金額",
+                    "start_date": "着手日", "delivered_at": "納品日",
+                }),
+                use_container_width=True, hide_index=True,
+            )
+        else:
+            st.info("案件データなし。Phase 1 で初案件獲得を目指しましょう🌊")
+
+    except Exception as e:
+        st.error(f"データ取得エラー: {e}")
+        st.info("creative スキーマがまだ存在しないか、接続できない可能性があります。")
+
+
 def render_competitor_tab():
     st.markdown("### 🏆 競合アカウント分析")
 
@@ -1252,15 +1268,14 @@ with refresh_col:
             except Exception as e:
                 st.error(f"更新エラー: {e}")
 
-# NOTE: ハッシュタグ・競合分析タブは X API Basic 契約までは事実上使えないため非表示中（2026-04-27）
-# 復活タイミング: X API Basic 契約後（自動データ収集が可能になった時点）
-# 関連: render_hashtag_tab() / render_competitor_tab() 関数とDBテーブルは残してある
 tabs = st.tabs([
     "🌟 Lumina",
     "🫧 ミャクやん",
-    "📈 トレンド",
     "🔥 バズストック",
     "📅 定期投稿",
+    "#️⃣ ハッシュタグ",
+    "🏆 競合分析",
+    "🌊 Marine Studio",
 ])
 
 with tabs[0]:
@@ -1278,10 +1293,16 @@ with tabs[1]:
     }, "myaku")
 
 with tabs[2]:
-    render_trend_tab()
-
-with tabs[3]:
     render_buzz_tab()
 
-with tabs[4]:
+with tabs[3]:
     render_recurring_tab()
+
+with tabs[4]:
+    render_hashtag_tab()
+
+with tabs[5]:
+    render_competitor_tab()
+
+with tabs[6]:
+    render_marine_studio_tab()
